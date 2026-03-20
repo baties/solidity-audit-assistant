@@ -1,0 +1,69 @@
+version: '3.9'
+
+# SolidityGuard AI — full stack
+# Services: app (Next.js + Express), postgres, nginx
+# Usage: docker-compose up  (add -d for detached / VPS mode)
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.app
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NEXT_TELEMETRY_DISABLED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - solidityguard
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-solidityguard}
+      POSTGRES_USER:     ${POSTGRES_USER:-solidityguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Auto-apply schema on first boot (idempotent — uses IF NOT EXISTS)
+      - ../server/db/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-solidityguard} -d ${POSTGRES_DB:-solidityguard}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - solidityguard
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - solidityguard
+
+volumes:
+  postgres_data:
+
+networks:
+  solidityguard:
+    driver: bridge
