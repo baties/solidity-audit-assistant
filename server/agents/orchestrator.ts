@@ -1,7 +1,7 @@
 /**
  * Scan pipeline orchestrator — coordinates fetcher → analyzer → llm → ScanResult.
- * This is the single entry point for a scan; called by the API route handler.
- * Each pipeline stage is logged with timing for observability.
+ * Single entry point for a scan job; called by the POST /api/scan route handler.
+ * Each stage is timed and logged with the scanId for end-to-end traceability.
  */
 import { logger } from '../lib/logger';
 import { fetchSource } from './fetcher';
@@ -10,10 +10,10 @@ import { analyzeWithClaude } from './llm';
 import type { ScanRequest, ScanResult } from '../../types';
 
 /**
- * Maps a numeric risk score (0–100) to a human-readable risk label.
- * Thresholds align with the LLM system prompt calibration in prompts/system.ts.
- * @param score - Risk score from 0 (safe) to 100 (critical)
- * @returns Risk label string
+ * Maps a 0–100 risk score to a human-readable risk label.
+ * Thresholds match the calibration in prompts/system.ts SYSTEM_PROMPT.
+ * @param score - Numeric risk score from Claude
+ * @returns Corresponding risk label
  */
 function scoreToLabel(score: number): ScanResult['riskLabel'] {
   if (score >= 90) return 'critical';
@@ -25,27 +25,30 @@ function scoreToLabel(score: number): ScanResult['riskLabel'] {
 
 /**
  * Runs the full security scan pipeline for a given target.
- * Coordinates fetcher, static analyzer, and Claude LLM in sequence.
+ * Stages: fetch source → static analysis → Claude LLM → assemble ScanResult.
  * @param request - Validated scan request (target, targetType, optional chain)
- * @param scanId  - UUID for this scan run — used for logging and DB tracking
+ * @param scanId  - UUID assigned by the API layer for logging and DB tracking
  * @returns Complete ScanResult with risk score, label, findings, and summary
- * @throws Error if any pipeline stage fails (caller logs and persists the error to DB)
+ * @throws Error if any pipeline stage fails (caller handles DB error persistence)
  */
 export async function runScan(request: ScanRequest, scanId: string): Promise<ScanResult> {
   const pipelineStart = Date.now();
   logger.info({ scanId, target: request.target, targetType: request.targetType }, 'scan pipeline started');
 
-  // Stage 1: fetch source files
+  // Stage 1: fetch source files from GitHub or Etherscan
+  const stageStart1 = Date.now();
   const files = await fetchSource(request);
-  logger.info({ scanId, files: files.length }, 'fetcher stage completed');
+  logger.info({ scanId, files: files.length, stageMs: Date.now() - stageStart1 }, 'stage:fetcher done');
 
-  // Stage 2: static pattern analysis
+  // Stage 2: fast static pattern checks — results passed to LLM as context
+  const stageStart2 = Date.now();
   const staticFindings = await runStaticAnalysis(files);
-  logger.info({ scanId, staticFindings: staticFindings.length }, 'analyzer stage completed');
+  logger.info({ scanId, staticFindings: staticFindings.length, stageMs: Date.now() - stageStart2 }, 'stage:analyzer done');
 
-  // Stage 3: Claude deep analysis
+  // Stage 3: deep Claude analysis — returns enriched findings + score + summary
+  const stageStart3 = Date.now();
   const { findings, summary, riskScore } = await analyzeWithClaude(files, staticFindings);
-  logger.info({ scanId, findings: findings.length, riskScore }, 'llm stage completed');
+  logger.info({ scanId, findings: findings.length, riskScore, stageMs: Date.now() - stageStart3 }, 'stage:llm done');
 
   const durationMs = Date.now() - pipelineStart;
 
@@ -60,7 +63,10 @@ export async function runScan(request: ScanRequest, scanId: string): Promise<Sca
     durationMs,
   };
 
-  logger.info({ scanId, riskScore, riskLabel: result.riskLabel, durationMs }, 'scan pipeline completed');
+  logger.info(
+    { scanId, riskScore, riskLabel: result.riskLabel, findings: findings.length, durationMs },
+    'scan pipeline completed'
+  );
 
   return result;
 }

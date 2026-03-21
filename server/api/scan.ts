@@ -1,27 +1,27 @@
 /**
  * Scan route handler — POST /api/scan.
- * Validates the request body with Zod, then delegates to the orchestrator.
- * Phase 0: returns 501 Not Implemented. Phase 1 wires in the full pipeline.
+ * Validates input, persists scan state to DB, runs the pipeline synchronously,
+ * and returns the complete ScanResult. Runs synchronously for MVP simplicity.
  */
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { randomUUID } from 'crypto';
 import { logger } from '../lib/logger';
+import { runScan } from '../agents/orchestrator';
+import { createScan, updateScanStatus, completeScan, failScan, insertFindings } from '../db/queries';
 
-/** Zod schema for scan request body — mirrors the ScanRequest type. */
 const ScanRequestSchema = z.object({
-  target: z.string().min(1).max(500),
+  target:     z.string().min(1).max(500),
   targetType: z.enum(['github', 'address']),
-  chain: z.enum(['ethereum', 'polygon', 'arbitrum', 'optimism', 'base', 'bsc']).optional(),
+  chain:      z.enum(['ethereum', 'polygon', 'arbitrum', 'optimism', 'base', 'bsc']).optional(),
 });
 
 /**
  * Handles POST /api/scan.
- * Validates input with Zod, assigns a scanId, and invokes the scan pipeline.
- * @param req  - Express request; body must match ScanRequestSchema
- * @param res  - Express response
- * @param next - Express next (forwards unhandled errors to global handler)
- * @returns 202 with scanId on success, 400 on validation failure, 501 in Phase 0
+ * Orchestrates: validate → create DB record → run pipeline → persist results → respond.
+ * Scans run synchronously; the request blocks until the scan completes (up to ~60s).
+ * @param req  - Body must satisfy ScanRequestSchema
+ * @param res  - Returns 200 ScanResult on success, 400 on bad input, 500 on pipeline failure
+ * @param next - Forwards unexpected errors to the global error handler
  */
 export async function scanHandler(
   req: Request,
@@ -31,21 +31,36 @@ export async function scanHandler(
   const parseResult = ScanRequestSchema.safeParse(req.body);
 
   if (!parseResult.success) {
-    res.status(400).json({
-      error: 'Invalid request',
-      details: parseResult.error.flatten(),
-    });
+    res.status(400).json({ error: 'Invalid request', details: parseResult.error.flatten() });
     return;
   }
 
-  const scanId = randomUUID();
   const { target, targetType, chain } = parseResult.data;
 
-  logger.info({ scanId, target, targetType, chain }, 'scan request received');
+  // Create DB record before pipeline starts so we can track failures
+  const scanId = await createScan(target, targetType, chain);
+  await updateScanStatus(scanId, 'running');
 
-  // Phase 1: invoke orchestrator, persist to DB, return 202 + scanId
-  res.status(501).json({
-    message: 'Scan endpoint not yet implemented — Phase 1',
-    scanId,
-  });
+  logger.info({ scanId, target, targetType, chain }, 'scan started');
+
+  try {
+    const result = await runScan({ target, targetType, chain }, scanId);
+
+    // Persist results to DB
+    await completeScan(scanId, result.riskScore, result.riskLabel, result.summary, result.durationMs);
+    await insertFindings(scanId, result.findings);
+
+    logger.info({ scanId, riskScore: result.riskScore, durationMs: result.durationMs }, 'scan completed');
+
+    res.status(200).json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown pipeline error';
+    await failScan(scanId, message).catch(() => {
+      // Best-effort: if DB update fails, still continue to error response
+      logger.error({ scanId }, 'failed to update scan status to failed');
+    });
+
+    logger.error({ err, scanId }, 'scan pipeline failed');
+    next(err);
+  }
 }

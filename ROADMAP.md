@@ -5,9 +5,9 @@
 
 ---
 
-## Current Phase: 1 — MVP ⬜ Next
+## Current Phase: 2 — Depth ⬜ Next
 
-**Goal**: Scan input → GitHub/Etherscan fetcher → 5 static checks → Claude analysis → risk score → report UI
+**Goal**: All 12 vuln categories, gas analysis, multi-chain, proxy detection
 
 ---
 
@@ -16,7 +16,7 @@
 | Phase | Goal | Status |
 |-------|------|--------|
 | **0 — Scaffold** | Repo structure, docker-compose, DB schema, empty route stubs, README skeleton | ✅ Done |
-| **1 — MVP** | Scan input → GitHub/Etherscan fetcher → 5 static checks → Claude analysis → risk score → report UI | ⬜ Next |
+| **1 — MVP** | Scan input → GitHub/Etherscan fetcher → 5 static checks → Claude analysis → risk score → report UI | ✅ Done |
 | **2 — Depth** | All 12 vuln categories, gas analysis, multi-chain, proxy detection | ⬜ Planned |
 | **3 — Auth & History** | NextAuth GitHub OAuth, scan history, shareable report links | ⬜ Planned |
 | **4 — Production** | Rate limiting, public REST API, Docker Hub image, full docs | ⬜ Planned |
@@ -86,4 +86,4 @@
 
 ---
 
-*Last updated: 2026-03-20 — Phase 0 complete. Phase 1 ready to begin.*
+*Last updated: 2026-03-21 — Phase 1 complete. Phase 2 ready to begin.*
