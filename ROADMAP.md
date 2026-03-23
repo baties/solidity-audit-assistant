@@ -17,73 +17,114 @@
 |-------|------|--------|
 | **0 — Scaffold** | Repo structure, docker-compose, DB schema, empty route stubs, README skeleton | ✅ Done |
 | **1 — MVP** | Scan input → GitHub/Etherscan fetcher → 5 static checks → Claude analysis → risk score → report UI | ✅ Done |
-| **2 — Depth** | All 12 vuln categories, gas analysis, multi-chain, proxy detection | ⬜ Planned |
+| **2 — Depth** | All 12 vuln categories, gas analysis, multi-chain, proxy detection | ⬜ Next |
 | **3 — Auth & History** | NextAuth GitHub OAuth, scan history, shareable report links | ⬜ Planned |
 | **4 — Production** | Rate limiting, public REST API, Docker Hub image, full docs | ⬜ Planned |
 
 ---
 
-## Phase 0 Task Breakdown
+## Phase 0 — Scaffold ✅ Done
 
-### Backend (server/api/, server/db/, server/services/, types/)
-- [ ] Root `package.json` with all deps, pnpm scripts (`dev`, `build`, `typecheck`, `lint`, `test`)
-- [ ] `tsconfig.json` (strict mode)
-- [ ] `server/lib/logger.ts` — pino structured logger
-- [ ] `types/index.ts` — shared interfaces: `ScanRequest`, `ScanResult`, `VulnerabilityFinding`, `SourceFile`, `Chain`
-- [ ] `server/api/scan.ts` — empty stub: `POST /api/scan`
-- [ ] `server/api/health.ts` — `GET /api/health` returns 200 + `{ status: "ok" }`
-- [ ] `server/api/index.ts` — Express app wiring
-- [ ] `server/db/schema.sql` — canonical schema: `scans`, `findings` tables
-- [ ] `server/db/migrations/001_initial.sql` — first migration
-- [ ] `server/db/client.ts` — pg Pool setup
-- [ ] `server/services/etherscan.ts` — empty stub with JSDoc
-- [ ] `server/services/github.ts` — empty stub with JSDoc
-- [ ] `server/index.ts` — Express entry point
+All files created. Full project structure in place.
 
-### Frontend (app/, components/, lib/)
-- [ ] `app/layout.tsx` — root layout with Tailwind + metadata
-- [ ] `app/page.tsx` — landing/scan input page skeleton
-- [ ] `app/globals.css` — Tailwind base
-- [ ] `components/ScanForm.tsx` — input form stub (GitHub URL or contract address)
-- [ ] `components/ReportCard.tsx` — report display stub
-- [ ] `components/RiskBadge.tsx` — risk score badge stub
-- [ ] `lib/schemas.ts` — Zod schemas: `ScanInputSchema`
-- [ ] `lib/constants.ts` — shared constants (chains, API base URL)
-- [ ] `next.config.ts` — Next.js config with rewrites to Express API
-
-### AI/Agent (server/agents/)
-- [ ] `server/agents/orchestrator.ts` — stub: coordinates fetcher → analyzer → llm pipeline
-- [ ] `server/agents/fetcher.ts` — stub: GitHub + Etherscan source retrieval
-- [ ] `server/agents/analyzer.ts` — stub: static pattern checks
-- [ ] `server/agents/llm.ts` — stub: Claude API calls via tool_use
-- [ ] `server/agents/prompts/system.ts` — placeholder system prompt constants
-
-### DevOps (docker/, .env.example)
-- [ ] `docker/Dockerfile.app` — multi-stage build (builder + runner)
-- [ ] `docker/docker-compose.yml` — services: app, postgres, nginx
-- [ ] `docker/nginx.conf` — reverse proxy: /api/ → Express :3001, / → Next.js :3000
-- [ ] `.env.example` — all required env vars documented
-
-### Architect (CLAUDE.md, ROADMAP.md, README.md, CONTRIBUTING.md)
-- [ ] `ROADMAP.md` — this file ✅
-- [ ] `README.md` — project overview, quick-start, env var table, architecture overview
-- [ ] `CONTRIBUTING.md` — repo setup, branch naming, PR checklist, code style, test guide
+**Key files created:**
+- Root: `package.json`, `tsconfig.json`, `tsconfig.server.json`, `next.config.mjs`, `tailwind.config.ts`, `postcss.config.js`, `vitest.config.ts`
+- `types/index.ts` — shared interfaces
+- `server/lib/logger.ts` — pino logger
+- `server/db/schema.sql` + `server/db/migrations/001_initial.sql`
+- `server/db/client.ts` — lazy pg Pool
+- `server/api/health.ts`, `scan.ts`, `scanResult.ts`, `index.ts`
+- `server/services/etherscan.ts`, `github.ts` (stubs at this stage)
+- `server/agents/orchestrator.ts`, `fetcher.ts`, `analyzer.ts`, `llm.ts`, `prompts/system.ts` (stubs)
+- `server/index.ts`
+- `app/layout.tsx`, `page.tsx`, `globals.css`, `scan/[scanId]/page.tsx`
+- `components/ScanForm.tsx`, `ReportCard.tsx`, `RiskBadge.tsx`
+- `lib/schemas.ts`, `lib/constants.ts`
+- `docker/Dockerfile.app`, `docker/docker-compose.yml`, `docker/nginx.conf`
+- `.env.example`, `.dockerignore`
+- `ROADMAP.md`, `README.md`, `CONTRIBUTING.md`, `docs/adr/001-raw-sql.md`, `docs/adr/002-tool-use.md`
 
 ---
 
-## Phase 0 Completion Criteria
-- `docker-compose up` starts app + postgres + nginx cleanly
-- `tsc --noEmit` passes with zero errors
-- All stubs are in place; no feature logic yet
-- README and CONTRIBUTING are complete
+## Phase 1 — MVP ✅ Done
+
+Full scan pipeline implemented end-to-end.
+
+**What was built:**
+- `server/services/etherscan.ts` — full implementation: handles all 3 Etherscan source formats (plain, `{{}}` Standard JSON, regular JSON); Sourcify fallback; chain-aware endpoints
+- `server/services/github.ts` — Octokit REST; parses GitHub URL; recursive tree; fetches .sol blobs; capped at 50 files
+- `server/agents/fetcher.ts` — routes to github or etherscan service by targetType
+- `server/agents/analyzer.ts` — 5 SWC pattern checks: reentrancy (SWC-107), tx.origin (SWC-115), unchecked .send() (SWC-104), pre-0.8 overflow (SWC-101), selfdestruct (SWC-106)
+- `server/agents/llm.ts` — real Claude `claude-sonnet-4-20250514` call; forced tool_use; 80KB source truncation; maps tool output to `VulnerabilityFinding[]`
+- `server/agents/orchestrator.ts` — wired pipeline: fetch → analyze → llm → ScanResult; per-stage timing
+- `server/db/queries.ts` — all DB helpers: createScan, updateScanStatus, completeScan, failScan, insertFindings, getScanById
+- `server/api/scan.ts` — full implementation: Zod → create DB record → pipeline → persist → respond (synchronous for MVP)
+- `server/api/scanResult.ts` — GET /api/scan/:scanId
+- `components/FindingItem.tsx` — expandable finding card with severity colors
+- `components/ReportCard.tsx` — full report: badge, summary, severity grid, findings list
+- `app/scan/[scanId]/page.tsx` — server component fetching scan from internal API
+
+**Tests written (18 passing):**
+- `server/__tests__/health.test.ts` — health endpoint (no DB needed)
+- `server/__tests__/scan-validation.test.ts` — Zod validation (DB mocked)
+- `server/agents/__tests__/analyzer.test.ts` — all 5 SWC checks with known Solidity snippets
+
+**Bugs fixed during Phase 1:**
+- `next.config.ts` → `next.config.mjs` (Next.js 14 does not support .ts config)
+- `server/db/client.ts` — Pool made lazy (was throwing at import time, broke all tests)
+- `tsconfig.server.json` — added `"dom"` to lib for `fetch` type availability
+
+**Known infrastructure requirement:**
+- `pnpm dev` requires a running Postgres. Start with: `docker-compose -f docker/docker-compose.yml up postgres -d`
+- Or full stack: `docker-compose -f docker/docker-compose.yml up --build`
+
+---
+
+## Phase 2 — Depth ⬜ Next (task breakdown TBD by Architect)
+
+**Goal**: Expand from 5 static checks to all 12 SWC categories, add gas analysis, multi-chain Etherscan keys, proxy detection (EIP-1967, minimal proxy).
+
+Planned tasks (to be confirmed at session start):
+- `server/agents/analyzer.ts` — add 7 more checks: access control (SWC-105), timestamp dependence (SWC-116), bad randomness (SWC-120), front-running (SWC-114), denial of service (SWC-113), uninitialized storage (SWC-109), arbitrary jump (SWC-127)
+- `server/agents/analyzer.ts` — gas analysis: detect unbounded loops, storage writes in loops
+- `server/services/etherscan.ts` — per-chain API keys (POLYGONSCAN_API_KEY etc.)
+- `server/agents/fetcher.ts` — proxy detection: check EIP-1967 storage slots, fetch implementation contract if proxy
+- `server/agents/prompts/system.ts` — update system prompt with gas and proxy instructions
+- `server/agents/__tests__/analyzer.test.ts` — tests for all 12 checks
+- `docs/adr/003-proxy-detection.md` — ADR for proxy detection approach
+
+---
+
+## Phase 3 — Auth & History ⬜ Planned
+
+NextAuth.js v5 GitHub OAuth, scan history per user, shareable report links.
+
+---
+
+## Phase 4 — Production ⬜ Planned
+
+Rate limiting, public REST API, Docker Hub image, full docs.
 
 ---
 
 ## Decisions & ADRs
-- **Raw SQL over ORM**: Explicit migrations, no magic schema sync, easier audit trail → see `docs/adr/001-raw-sql.md` (Phase 1)
-- **tool_use over free-form LLM**: Structured output, type-safe parsing, no regex hacks → see `docs/adr/002-tool-use.md` (Phase 1)
-- **Express + Next.js coexistence**: Next.js handles frontend + rewrites `/api/*` to Express on :3001 in dev; Nginx routes in prod
+
+- **Raw SQL over ORM** → `docs/adr/001-raw-sql.md`
+- **tool_use over free-form LLM output** → `docs/adr/002-tool-use.md`
+- **Express + Next.js coexistence**: Next.js rewrites `/api/*` to Express :3001 in dev; Nginx routes in prod
+- **Synchronous scans for MVP**: POST /api/scan blocks until complete (~60s max). Phase 2/3 can add async polling if needed.
+- **next.config must be .mjs**: Next.js 14 does not support TypeScript config files (added in Next.js 15)
+- **Lazy DB pool**: `server/db/client.ts` creates Pool on first `query()` call, not at import — required for tests that mock the module
 
 ---
 
-*Last updated: 2026-03-21 — Phase 1 complete. Phase 2 ready to begin.*
+## Process Rules (learned from Phase 1)
+
+- Run `pnpm typecheck` before declaring a phase done
+- Run `pnpm test` before declaring a phase done — all tests must pass
+- Subagents spawned via the Agent tool cannot write files unless Write permission is explicitly granted in session settings — Architect writes all files directly
+- Never declare a phase complete without verifying build + tests
+
+---
+
+*Last updated: 2026-03-23 — Phase 1 complete + bugs fixed + 18 tests passing. Phase 2 ready to begin.*
