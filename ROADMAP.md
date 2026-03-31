@@ -5,7 +5,7 @@
 
 ---
 
-## Current Phase: 2 — Depth ⬜ Next
+## Current Phase: 3 — Auth & History ⬜ Next
 
 **Goal**: All 12 vuln categories, gas analysis, multi-chain, proxy detection
 
@@ -17,7 +17,7 @@
 |-------|------|--------|
 | **0 — Scaffold** | Repo structure, docker-compose, DB schema, empty route stubs, README skeleton | ✅ Done |
 | **1 — MVP** | Scan input → GitHub/Etherscan fetcher → 5 static checks → Claude analysis → risk score → report UI | ✅ Done |
-| **2 — Depth** | All 12 vuln categories, gas analysis, multi-chain, proxy detection | ⬜ Next |
+| **2 — Depth** | All 12 vuln categories, gas analysis, multi-chain, proxy detection | ✅ Done |
 | **3 — Auth & History** | NextAuth GitHub OAuth, scan history, shareable report links | ⬜ Planned |
 | **4 — Production** | Rate limiting, public REST API, Docker Hub image, full docs | ⬜ Planned |
 
@@ -80,18 +80,21 @@ Full scan pipeline implemented end-to-end.
 
 ---
 
-## Phase 2 — Depth ⬜ Next (task breakdown TBD by Architect)
+## Phase 2 — Depth ✅ Done
 
 **Goal**: Expand from 5 static checks to all 12 SWC categories, add gas analysis, multi-chain Etherscan keys, proxy detection (EIP-1967, minimal proxy).
 
-Planned tasks (to be confirmed at session start):
-- `server/agents/analyzer.ts` — add 7 more checks: access control (SWC-105), timestamp dependence (SWC-116), bad randomness (SWC-120), front-running (SWC-114), denial of service (SWC-113), uninitialized storage (SWC-109), arbitrary jump (SWC-127)
-- `server/agents/analyzer.ts` — gas analysis: detect unbounded loops, storage writes in loops
-- `server/services/etherscan.ts` — per-chain API keys (POLYGONSCAN_API_KEY etc.)
-- `server/agents/fetcher.ts` — proxy detection: check EIP-1967 storage slots, fetch implementation contract if proxy
-- `server/agents/prompts/system.ts` — update system prompt with gas and proxy instructions
-- `server/agents/__tests__/analyzer.test.ts` — tests for all 12 checks
-- `docs/adr/003-proxy-detection.md` — ADR for proxy detection approach
+**What was built:**
+- `server/agents/analyzer.ts` — 14 checks total: 12 SWC (107, 115, 104, 101, 106, 105, 116, 120, 114, 113, 109, 127) + 2 gas (array.length in loop, storage push in loop)
+- `server/agents/analyzer.ts` — `scope: 'file'` support for multi-line pattern checks (used by SWC-105, 114, gas-002)
+- `server/services/etherscan.ts` — per-chain API key resolution: POLYGONSCAN_API_KEY, ARBISCAN_API_KEY, OPTIMISM_ETHERSCAN_API_KEY, BASESCAN_API_KEY, BSCSCAN_API_KEY; falls back to ETHERSCAN_API_KEY
+- `server/services/etherscan.ts` — `fetchImplementationIfProxy()`: reads EIP-1967 storage slot via Etherscan `eth_getStorageAt`
+- `server/services/proxy.ts` — new service: `detectProxyFromSource()` — detects EIP-1967 transparent/UUPS and EIP-1167 minimal clone patterns in source text
+- `server/agents/fetcher.ts` — proxy detection integrated: detects proxy → reads EIP-1967 slot → fetches implementation source → merges with `implementation(<addr>)/` prefix + `__proxy_info__.txt` header
+- `server/agents/prompts/system.ts` — updated with gas analysis instructions, proxy contract audit instructions, `__proxy_info__.txt` protocol
+- `server/agents/__tests__/analyzer.test.ts` — 32 tests total (22 analyzer + 8 scan-validation + 2 health), all passing
+- `docs/adr/003-proxy-detection.md` — ADR documenting two-layer proxy detection approach
+- `.env.example` — all per-chain API key vars documented
 
 ---
 
@@ -127,4 +130,4 @@ Rate limiting, public REST API, Docker Hub image, full docs.
 
 ---
 
-*Last updated: 2026-03-23 — Phase 1 complete + bugs fixed + 18 tests passing. Phase 2 ready to begin.*
+*Last updated: 2026-03-31 — Phase 2 complete. 14 static checks, gas analysis, proxy detection, per-chain API keys. 32 tests passing, tsc clean. Phase 3 ready to begin.*
