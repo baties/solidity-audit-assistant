@@ -23,6 +23,39 @@ const ETHERSCAN_ENDPOINTS: Record<Chain, string> = {
   bsc:      'https://api.bscscan.com/api',
 };
 
+/**
+ * Per-chain API key env var names. Each explorer has its own key system.
+ * Falls back to ETHERSCAN_API_KEY if the chain-specific var is not set —
+ * allowing users to start with just one key and add per-chain keys as needed.
+ */
+const CHAIN_API_KEY_ENV: Record<Chain, string> = {
+  ethereum: 'ETHERSCAN_API_KEY',
+  polygon:  'POLYGONSCAN_API_KEY',
+  arbitrum: 'ARBISCAN_API_KEY',
+  optimism: 'OPTIMISM_ETHERSCAN_API_KEY',
+  base:     'BASESCAN_API_KEY',
+  bsc:      'BSCSCAN_API_KEY',
+};
+
+/**
+ * Resolves the API key for the given chain.
+ * Checks the chain-specific env var first, then falls back to ETHERSCAN_API_KEY.
+ * @param chain - EVM chain identifier
+ * @returns API key string
+ * @throws Error if neither a chain-specific key nor the fallback key is set
+ */
+function resolveApiKey(chain: Chain): string {
+  const chainEnvVar = CHAIN_API_KEY_ENV[chain];
+  const key = process.env[chainEnvVar] ?? process.env.ETHERSCAN_API_KEY;
+  if (!key) {
+    throw new Error(
+      `No API key found for chain "${chain}". ` +
+      `Set ${chainEnvVar} or the fallback ETHERSCAN_API_KEY in your .env file.`
+    );
+  }
+  return key;
+}
+
 const SOURCIFY_CHAIN_IDS: Record<Chain, number> = {
   ethereum: 1,
   polygon:  137,
@@ -110,12 +143,9 @@ async function fetchFromSourcify(address: string, chainId: number): Promise<Sour
 export async function fetchContractSource(address: string, chain: Chain): Promise<SourceFile[]> {
   const start = Date.now();
 
-  if (!process.env.ETHERSCAN_API_KEY) {
-    throw new Error('ETHERSCAN_API_KEY environment variable is required but not set.');
-  }
-
+  const apiKey = resolveApiKey(chain);
   const baseUrl = ETHERSCAN_ENDPOINTS[chain];
-  const url = `${baseUrl}?module=contract&action=getsourcecode&address=${address}&apikey=${process.env.ETHERSCAN_API_KEY}`;
+  const url = `${baseUrl}?module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`;
 
   logger.info({ service: 'etherscan', address, chain }, 'fetching contract source');
 
@@ -147,4 +177,53 @@ export async function fetchContractSource(address: string, chain: Chain): Promis
     'contract source fetched'
   );
   return files;
+}
+
+/**
+ * Reads the EIP-1967 implementation storage slot from a proxy contract via Etherscan's
+ * `eth_getStorageAt` proxy endpoint. Returns the implementation address if the slot is
+ * non-zero, or null if the contract is not an EIP-1967 proxy.
+ *
+ * EIP-1967 implementation slot:
+ *   keccak256("eip1967.proxy.implementation") - 1
+ *   = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc
+ *
+ * @param proxyAddress - Checksummed address of the proxy contract
+ * @param chain        - Chain to query
+ * @returns Implementation contract address (0x-prefixed), or null if not an EIP-1967 proxy
+ */
+export async function fetchImplementationIfProxy(
+  proxyAddress: string,
+  chain: Chain,
+): Promise<string | null> {
+  const EIP1967_IMPL_SLOT = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
+
+  try {
+    const apiKey = resolveApiKey(chain);
+    const baseUrl = ETHERSCAN_ENDPOINTS[chain];
+    const url =
+      `${baseUrl}?module=proxy&action=eth_getStorageAt` +
+      `&address=${proxyAddress}&position=${EIP1967_IMPL_SLOT}&tag=latest&apikey=${apiKey}`;
+
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json() as { result?: string };
+    const raw = data.result ?? '';
+
+    // EIP-1967 slot stores the address in the last 20 bytes of a 32-byte word
+    // A zero slot means no implementation has been set (not a proxy or uninitialized)
+    if (!raw || raw === '0x' || /^0x0+$/.test(raw)) return null;
+
+    // Extract 20-byte address from 32-byte storage value (right-aligned)
+    const implAddress = '0x' + raw.slice(-40);
+    logger.info(
+      { service: 'etherscan', proxy: proxyAddress, implementation: implAddress, chain },
+      'eip1967 implementation address found'
+    );
+    return implAddress;
+  } catch (err) {
+    logger.warn({ err, service: 'etherscan', proxy: proxyAddress }, 'proxy slot read failed — skipping');
+    return null;
+  }
 }
