@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { APP_NAME } from '@/lib/constants';
+import { AuthButton } from '@/components/AuthButton';
 
 export const metadata: Metadata = {
   title: APP_NAME,
@@ -17,11 +18,11 @@ export default function RootLayout({
       <body>
         <div className="min-h-screen flex flex-col">
           <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
-            <span className="text-lg font-bold tracking-tight text-[var(--brand-green)]">
-              SolidityGuard AI
-            </span>
+            <a href="/" className="text-lg font-bold tracking-tight text-[var(--brand-green)] hover:opacity-80 transition">
+              Solidity Smart Audit
+            </a>
             <nav className="text-sm text-white/50">
-              {/* Phase 3: auth nav links */}
+              <AuthButton />
             </nav>
           </header>
 
@@ -30,7 +31,7 @@ export default function RootLayout({
           </main>
 
           <footer className="border-t border-white/10 px-6 py-4 text-center text-xs text-white/30">
-            SolidityGuard AI — MIT License — Open source smart contract security
+            Solidity Smart Audit — MIT License — Open source smart contract security
           </footer>
         </div>
       </body>

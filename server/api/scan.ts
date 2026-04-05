@@ -7,7 +7,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { logger } from '../lib/logger';
 import { runScan } from '../agents/orchestrator';
-import { createScan, updateScanStatus, completeScan, failScan, insertFindings } from '../db/queries';
+import { createScan, updateScanStatus, completeScan, failScan, insertFindings, assignScanToUser } from '../db/queries';
 
 const ScanRequestSchema = z.object({
   target:     z.string().min(1).max(500),
@@ -37,11 +37,15 @@ export async function scanHandler(
 
   const { target, targetType, chain } = parseResult.data;
 
+  // X-User-Id is injected by the Next.js /api/scan route handler when the user is authenticated.
+  // Express trusts this header because both services are co-located (internal network only).
+  const userId = typeof req.headers['x-user-id'] === 'string' ? req.headers['x-user-id'] : null;
+
   // Create DB record before pipeline starts so we can track failures
   const scanId = await createScan(target, targetType, chain);
   await updateScanStatus(scanId, 'running');
 
-  logger.info({ scanId, target, targetType, chain }, 'scan started');
+  logger.info({ scanId, target, targetType, chain, userId }, 'scan started');
 
   try {
     const result = await runScan({ target, targetType, chain }, scanId);
@@ -49,6 +53,11 @@ export async function scanHandler(
     // Persist results to DB
     await completeScan(scanId, result.riskScore, result.riskLabel, result.summary, result.durationMs);
     await insertFindings(scanId, result.findings);
+
+    // Associate scan with authenticated user if one was provided
+    if (userId) {
+      await assignScanToUser(scanId, userId);
+    }
 
     logger.info({ scanId, riskScore: result.riskScore, durationMs: result.durationMs }, 'scan completed');
 

@@ -27,5 +27,5 @@ export const CHAIN_LABELS: Record<SupportedChain, string> = {
 /** Base URL for the Express API. Proxied through Next.js rewrites in dev. */
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
-export const APP_NAME = 'SolidityGuard AI';
+export const APP_NAME = 'Solidity Smart Audit';
 export const APP_TAGLINE = 'AI-powered smart contract security analysis';

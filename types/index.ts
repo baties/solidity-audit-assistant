@@ -1,5 +1,5 @@
 /**
- * Shared TypeScript interfaces for SolidityGuard AI.
+ * Shared TypeScript interfaces for Solidity Smart Audit.
  * Used by both the Express backend and Next.js frontend.
  * All API request/response shapes must match these types.
  */

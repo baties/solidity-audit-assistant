@@ -1,5 +1,5 @@
 /**
- * Vitest configuration for SolidityGuard AI.
+ * Vitest configuration for Solidity Smart Audit.
  * Runs server-side tests with Node environment.
  * Integration tests that hit Postgres require DATABASE_URL to be set.
  */
