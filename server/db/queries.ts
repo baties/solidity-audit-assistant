@@ -118,6 +118,116 @@ export async function insertFindings(
   logger.debug({ scanId, count: findings.length }, 'findings inserted');
 }
 
+/** Summary row for scan history listings — no findings included. */
+export interface ScanSummary {
+  id: string;
+  target: string;
+  targetType: 'github' | 'address';
+  chain: string | null;
+  status: ScanStatus;
+  riskScore: number | null;
+  riskLabel: string | null;
+  durationMs: number | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+/**
+ * Inserts or updates a user row keyed by GitHub provider ID.
+ * Called on every sign-in so name/email/avatar stay fresh.
+ * @param githubId  - GitHub user ID string from the OAuth provider
+ * @param name      - Display name (may be null)
+ * @param email     - Primary email (may be null)
+ * @param avatarUrl - Profile image URL (may be null)
+ * @returns Internal UUID for the user row
+ */
+export async function upsertUser(
+  githubId: string,
+  name: string | null,
+  email: string | null,
+  avatarUrl: string | null
+): Promise<string> {
+  const result = await query<{ id: string }>(
+    `INSERT INTO users (github_id, name, email, avatar_url)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (github_id) DO UPDATE
+       SET name = EXCLUDED.name, email = EXCLUDED.email, avatar_url = EXCLUDED.avatar_url
+     RETURNING id`,
+    [githubId, name, email, avatarUrl]
+  );
+  return result.rows[0].id;
+}
+
+/**
+ * Returns a user's internal UUID given their GitHub provider ID.
+ * Returns null if the user has not signed in before.
+ * @param githubId - GitHub provider user ID
+ */
+export async function getUserByGithubId(githubId: string): Promise<{ id: string } | null> {
+  const result = await query<{ id: string }>(
+    `SELECT id FROM users WHERE github_id = $1`,
+    [githubId]
+  );
+  return result.rows[0] ?? null;
+}
+
+/**
+ * Returns a paginated list of scan summaries for a given user, newest first.
+ * Does not include findings — use getScanById for full detail.
+ * @param userId - Internal UUID of the user
+ * @param limit  - Maximum rows to return (default 20)
+ * @param offset - Pagination offset (default 0)
+ * @returns Array of ScanSummary rows
+ */
+export async function getScansByUser(
+  userId: string,
+  limit = 20,
+  offset = 0
+): Promise<ScanSummary[]> {
+  const result = await query<{
+    id: string;
+    target: string;
+    target_type: string;
+    chain: string | null;
+    status: string;
+    risk_score: number | null;
+    risk_label: string | null;
+    duration_ms: number | null;
+    created_at: string;
+    completed_at: string | null;
+  }>(
+    `SELECT id, target, target_type, chain, status, risk_score, risk_label,
+            duration_ms, created_at, completed_at
+       FROM scans
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3`,
+    [userId, limit, offset]
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    target: row.target,
+    targetType: row.target_type as 'github' | 'address',
+    chain: row.chain,
+    status: row.status as ScanStatus,
+    riskScore: row.risk_score,
+    riskLabel: row.risk_label,
+    durationMs: row.duration_ms,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+  }));
+}
+
+/**
+ * Associates an existing scan with a user. Called after the scan pipeline
+ * completes when the user was authenticated at submission time.
+ * @param scanId - UUID of the scan to update
+ * @param userId - Internal UUID of the owning user
+ */
+export async function assignScanToUser(scanId: string, userId: string): Promise<void> {
+  await query(`UPDATE scans SET user_id = $1 WHERE id = $2`, [userId, scanId]);
+}
+
 /**
  * Retrieves a scan row and all its findings by scan UUID.
  * Returns null if the scan does not exist.

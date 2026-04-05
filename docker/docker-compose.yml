@@ -1,6 +1,6 @@
 version: '3.9'
 
-# SolidityGuard AI — full stack
+# Solidity Smart Audit — full stack
 # Services: app (Next.js + Express), postgres, nginx
 # Usage: docker-compose up  (add -d for detached / VPS mode)
 
@@ -20,19 +20,24 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - INTERNAL_API_URL=http://localhost:3001
       - NEXT_TELEMETRY_DISABLED=1
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - solidityguard
+      - solidityaudit
 
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB:       ${POSTGRES_DB:-solidityguard}
-      POSTGRES_USER:     ${POSTGRES_USER:-solidityguard}
+      POSTGRES_DB:       ${POSTGRES_DB:-solidityaudit}
+      POSTGRES_USER:     ${POSTGRES_USER:-solidityaudit}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -41,13 +46,13 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-solidityguard} -d ${POSTGRES_DB:-solidityguard}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-solidityaudit} -d ${POSTGRES_DB:-solidityaudit}"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
     networks:
-      - solidityguard
+      - solidityaudit
 
   nginx:
     image: nginx:alpine
@@ -59,11 +64,11 @@ services:
       - app
     restart: unless-stopped
     networks:
-      - solidityguard
+      - solidityaudit
 
 volumes:
   postgres_data:
 
 networks:
-  solidityguard:
+  solidityaudit:
     driver: bridge

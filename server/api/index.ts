@@ -8,6 +8,7 @@ import cors from 'cors';
 import { healthHandler } from './health';
 import { scanHandler } from './scan';
 import { scanResultHandler } from './scanResult';
+import { scanHistoryHandler } from './scanHistory';
 import { logger } from '../lib/logger';
 
 export const app = express();
@@ -25,6 +26,7 @@ app.use(cors({
 app.get('/api/health', healthHandler);
 app.post('/api/scan', scanHandler);
 app.get('/api/scan/:scanId', scanResultHandler);
+app.get('/api/scan-history/:userId', scanHistoryHandler);
 
 // 404 handler — catches any unmatched routes
 app.use((_req: Request, res: Response) => {
