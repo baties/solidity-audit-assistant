@@ -5,7 +5,7 @@
 
 ---
 
-## Current Phase: 4 — Production ⬜ Next
+## Current Phase: 4 — Production ✅ Done
 
 **Goal**: Rate limiting, public REST API, Docker Hub image, full documentation
 
@@ -19,7 +19,7 @@
 | **1 — MVP** | Scan input → GitHub/Etherscan fetcher → 5 static checks → AI analysis → risk score → report UI | ✅ Done |
 | **2 — Depth** | All 12 SWC categories, gas analysis, multi-chain, proxy detection | ✅ Done |
 | **3 — Auth & History** | GitHub OAuth, scan history per user, shareable report links | ✅ Done |
-| **4 — Production** | Rate limiting, public REST API, Docker Hub image, full docs | ⬜ Planned |
+| **4 — Production** | Rate limiting, public REST API, Docker Hub image, full docs | ✅ Done |
 
 ---
 
@@ -96,18 +96,21 @@ Full scan pipeline, end-to-end.
 
 ---
 
-## Phase 4 — Production ⬜ Planned
+## Phase 4 — Production ✅ Done
 
-**Goal**: Make the project ready for self-hosted production deployments and public API consumers.
+**What was built:**
+- `express-rate-limit 8.x` on `POST /api/scan` and `POST /v1/scan`: 1 req/30s per userId (auth) or per IP (anon); 429 JSON; `logger.warn` on hit; `trust proxy` set for Nginx topology
+- `server/api/apiKeys.ts` — `apiKeyAuth` middleware + CRUD handlers; keys generated as `ska_<64 hex>`, only SHA-256 hash stored; prefix shown in UI
+- `server/db/migrations/003_api_keys.sql` + `api_keys` table in `schema.sql`
+- `POST /v1/scan` — public REST endpoint: apiKeyAuth → scanLimiter → scanHandler
+- `app/api/api-keys/route.ts` — Next.js session proxy for key management
+- `docs/api/openapi.yaml` — full OpenAPI 3.0.3 spec; served at `GET /api/docs`
+- `.github/workflows/ci.yml` — typecheck + lint + test on push/PR to main
+- `.github/workflows/docker-publish.yml` — builds and pushes `ghcr.io` image on every push to main
+- `SECURITY.md` — GitHub private vulnerability reporting (no placeholder email)
+- `server/__tests__/api-keys.test.ts` — 13 E2E tests for all new endpoints
 
-**Planned items:**
-- [ ] Rate limiting on POST `/api/scan` (1 scan per user per 30 s; per-IP for unauthenticated users)
-- [ ] Public REST API with API key authentication and OpenAPI spec
-- [ ] Docker Hub image (`ghcr.io/batis/solidity-audit-assistant`)
-- [ ] Full API reference docs in `docs/api/`
-- [ ] `SECURITY.md` and responsible disclosure process
-- [ ] End-to-end tests (Playwright or Supertest for full pipeline)
-- [ ] GitHub Actions CI — typecheck + lint + test on every PR
+**45 tests passing, tsc clean.**
 
 ---
 
@@ -127,4 +130,4 @@ Full scan pipeline, end-to-end.
 
 ---
 
-*Last updated: 2026-04-05 — Phase 3 complete. Auth & history implemented. 32 tests passing, tsc clean. Phase 4 ready to begin.*
+*Last updated: 2026-05-11 — Phase 4 complete. Rate limiting, public REST API, API key auth, OpenAPI spec, CI pipeline, GHCR Docker image. 45 tests passing, tsc clean. All phases complete.*

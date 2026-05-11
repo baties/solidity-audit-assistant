@@ -163,7 +163,7 @@ See [ROADMAP.md](ROADMAP.md) for current phase and upcoming work.
 | 1 — MVP | ✅ Done |
 | 2 — Depth | ✅ Done |
 | 3 — Auth & History | ✅ Done |
-| 4 — Production | ⬜ Planned |
+| 4 — Production | ✅ Done |
 
 ---
 
