@@ -5,6 +5,7 @@
  */
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { healthHandler } from './health';
 import { scanHandler } from './scan';
 import { scanResultHandler } from './scanResult';
@@ -12,6 +13,10 @@ import { scanHistoryHandler } from './scanHistory';
 import { logger } from '../lib/logger';
 
 export const app = express();
+
+// Required for correct req.ip behind Nginx reverse proxy (prod) and for express-rate-limit IPv6 handling.
+// Hop count of 1 matches the single Nginx proxy in our docker-compose topology.
+app.set('trust proxy', 1);
 
 // Parse JSON bodies up to 10MB (large contract repos can produce big payloads)
 app.use(express.json({ limit: '10mb' }));
@@ -22,9 +27,35 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
+// Rate limiter for POST /api/scan: 1 request per 30s.
+// Keyed by authenticated userId (X-User-Id header) when present, otherwise by IP.
+// X-User-Id is injected by the Next.js proxy after session validation — trusted on internal network only.
+// Skipped in test environment so validation unit tests are not affected by the limiter.
+const scanLimiter = rateLimit({
+  windowMs: 30_000,
+  limit: 1,
+  skip: () => process.env.NODE_ENV === 'test',
+  keyGenerator: (req: Request) => {
+    const userId = req.headers['x-user-id'];
+    return typeof userId === 'string' ? `user:${userId}` : `ip:${req.ip ?? 'unknown'}`;
+  },
+  handler: (req: Request, res: Response) => {
+    const userId = req.headers['x-user-id'];
+    logger.warn(
+      { ip: req.ip, userId: typeof userId === 'string' ? userId : undefined },
+      'rate limit hit on POST /api/scan',
+    );
+    res.status(429).json({ error: 'Rate limit exceeded. Try again in 30 seconds.' });
+  },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  // Suppress eager validation warnings: trust proxy is set above; keyGenerator handles IPv6 explicitly.
+  validate: false,
+});
+
 // Routes
 app.get('/api/health', healthHandler);
-app.post('/api/scan', scanHandler);
+app.post('/api/scan', scanLimiter, scanHandler);
 app.get('/api/scan/:scanId', scanResultHandler);
 app.get('/api/scan-history/:userId', scanHistoryHandler);
 

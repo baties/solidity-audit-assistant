@@ -3,6 +3,7 @@
 > AI-powered smart contract security analysis platform.  
 > Submit a GitHub repo URL or a deployed EVM contract address — get a risk score, vulnerability report, and remediation checklist in seconds.
 
+[![CI](https://github.com/batis/solidity-audit-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/batis/solidity-audit-assistant/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 

@@ -15,14 +15,16 @@ We only maintain the current `main` branch. Always run the latest commit for sec
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-If you discover a security vulnerability in Solidity Smart Audit itself (the platform, API, or dependencies), please report it responsibly:
+If you discover a security vulnerability in Solidity Smart Audit itself (the platform, API, or dependencies), please report it responsibly via **GitHub's private vulnerability reporting**:
 
-1. **Email**: security@your-org.com
-2. **Subject**: `[SECURITY] <short description>`
-3. **Include**:
+1. Go to the repository on GitHub
+2. Click the **Security** tab → **Report a vulnerability**
+3. Fill in the advisory form — include:
    - A description of the vulnerability and its potential impact
    - Steps to reproduce (proof-of-concept if possible)
    - Any suggested mitigations
+
+This is an open-source project maintained by community contributors. GitHub's private advisory flow keeps the report confidential until a fix is released.
 
 You will receive an acknowledgement within **48 hours** and a full response within **7 days**.
 
