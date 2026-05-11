@@ -228,6 +228,115 @@ export async function assignScanToUser(scanId: string, userId: string): Promise<
   await query(`UPDATE scans SET user_id = $1 WHERE id = $2`, [userId, scanId]);
 }
 
+// ─── API Key queries ──────────────────────────────────────────────────────────
+
+/** Public shape of an API key row (never includes the hash). */
+export interface ApiKeyRecord {
+  id: string;
+  userId: string;
+  keyPrefix: string;
+  name: string | null;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * Inserts a new API key row. The caller must hash the plaintext key before calling.
+ * @param userId    - Internal UUID of the owning user
+ * @param keyHash   - SHA-256 hex digest of the plaintext key
+ * @param keyPrefix - First 12 characters of the plaintext key (safe to display)
+ * @param name      - Optional human-readable label for the key
+ * @returns The new ApiKeyRecord (no plaintext — caller must save that separately)
+ */
+export async function createApiKey(
+  userId: string,
+  keyHash: string,
+  keyPrefix: string,
+  name: string | null
+): Promise<ApiKeyRecord> {
+  const result = await query<{
+    id: string; user_id: string; key_prefix: string;
+    name: string | null; is_active: boolean; last_used_at: string | null; created_at: string;
+  }>(
+    `INSERT INTO api_keys (user_id, key_hash, key_prefix, name)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, user_id, key_prefix, name, is_active, last_used_at, created_at`,
+    [userId, keyHash, keyPrefix, name]
+  );
+  return mapApiKeyRow(result.rows[0]);
+}
+
+/**
+ * Looks up an API key by its SHA-256 hash. Used to authenticate /v1/scan requests.
+ * @param keyHash - SHA-256 hex digest of the key from the X-Api-Key header
+ * @returns Minimal auth record, or null if the key does not exist
+ */
+export async function getApiKeyByHash(
+  keyHash: string
+): Promise<{ id: string; userId: string; isActive: boolean } | null> {
+  const result = await query<{ id: string; user_id: string; is_active: boolean }>(
+    `SELECT id, user_id, is_active FROM api_keys WHERE key_hash = $1`,
+    [keyHash]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return { id: row.id, userId: row.user_id, isActive: row.is_active };
+}
+
+/**
+ * Returns all API keys for a user, ordered newest first.
+ * @param userId - Internal UUID of the user
+ */
+export async function getApiKeysByUser(userId: string): Promise<ApiKeyRecord[]> {
+  const result = await query<{
+    id: string; user_id: string; key_prefix: string;
+    name: string | null; is_active: boolean; last_used_at: string | null; created_at: string;
+  }>(
+    `SELECT id, user_id, key_prefix, name, is_active, last_used_at, created_at
+       FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`,
+    [userId]
+  );
+  return result.rows.map(mapApiKeyRow);
+}
+
+/**
+ * Deactivates an API key. The userId guard ensures users can only revoke their own keys.
+ * @param keyId  - UUID of the key to deactivate
+ * @param userId - Must match the key's owner — enforced at DB level
+ * @returns true if the key was found and deactivated, false if not found / wrong owner
+ */
+export async function deactivateApiKey(keyId: string, userId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE api_keys SET is_active = FALSE WHERE id = $1 AND user_id = $2`,
+    [keyId, userId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Updates last_used_at for an API key. Intended to be called fire-and-forget.
+ * @param keyId - UUID of the API key that was just used
+ */
+export async function touchApiKeyLastUsed(keyId: string): Promise<void> {
+  await query(`UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`, [keyId]);
+}
+
+function mapApiKeyRow(row: {
+  id: string; user_id: string; key_prefix: string;
+  name: string | null; is_active: boolean; last_used_at: string | null; created_at: string;
+}): ApiKeyRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    keyPrefix: row.key_prefix,
+    name: row.name,
+    isActive: row.is_active,
+    lastUsedAt: row.last_used_at,
+    createdAt: row.created_at,
+  };
+}
+
 /**
  * Retrieves a scan row and all its findings by scan UUID.
  * Returns null if the scan does not exist.

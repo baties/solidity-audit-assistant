@@ -49,3 +49,20 @@ CREATE INDEX IF NOT EXISTS idx_findings_scan_id   ON findings(scan_id);
 CREATE INDEX IF NOT EXISTS idx_scans_created_at   ON scans(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_scans_status       ON scans(status);
 CREATE INDEX IF NOT EXISTS idx_scans_user_id      ON scans(user_id);
+
+-- API keys for the public REST API (POST /v1/scan).
+-- Plaintext key is never stored; only the SHA-256 hash is persisted.
+-- key_prefix stores the first 12 chars of the plaintext key for safe display in the UI.
+CREATE TABLE IF NOT EXISTS api_keys (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key_hash      TEXT        NOT NULL UNIQUE,
+  key_prefix    TEXT        NOT NULL,
+  name          TEXT,
+  is_active     BOOLEAN     NOT NULL DEFAULT TRUE,
+  last_used_at  TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id  ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);

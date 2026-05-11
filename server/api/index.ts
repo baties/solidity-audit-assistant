@@ -10,6 +10,7 @@ import { healthHandler } from './health';
 import { scanHandler } from './scan';
 import { scanResultHandler } from './scanResult';
 import { scanHistoryHandler } from './scanHistory';
+import { apiKeyAuth, createApiKeyHandler, listApiKeysHandler, deactivateApiKeyHandler } from './apiKeys';
 import { logger } from '../lib/logger';
 
 export const app = express();
@@ -58,6 +59,15 @@ app.get('/api/health', healthHandler);
 app.post('/api/scan', scanLimiter, scanHandler);
 app.get('/api/scan/:scanId', scanResultHandler);
 app.get('/api/scan-history/:userId', scanHistoryHandler);
+
+// API key management — X-User-Id injected by the Next.js session proxy
+app.post('/api/api-keys', createApiKeyHandler);
+app.get('/api/api-keys', listApiKeysHandler);
+app.delete('/api/api-keys/:keyId', deactivateApiKeyHandler);
+
+// Public REST API — authenticated by X-Api-Key header (no session required)
+// apiKeyAuth validates the key and injects X-User-Id; scanLimiter then keys by userId.
+app.post('/v1/scan', apiKeyAuth, scanLimiter, scanHandler);
 
 // 404 handler — catches any unmatched routes
 app.use((_req: Request, res: Response) => {
