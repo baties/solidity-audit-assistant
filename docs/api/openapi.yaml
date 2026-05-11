@@ -1,0 +1,398 @@
+openapi: 3.0.3
+info:
+  title: Solidity Smart Audit API
+  version: 1.0.0
+  description: |
+    AI-powered Solidity smart contract security analysis platform.
+
+    ## Authentication
+
+    **Public API (`/v1/*`)** — use an API key obtained from the web UI:
+    ```
+    X-Api-Key: ska_your_key_here
+    ```
+
+    **Management API (`/api/api-keys`)** — requires an active GitHub OAuth session
+    (handled transparently by the web app). Not intended for direct API consumers.
+
+  contact:
+    name: Report a vulnerability
+    url: https://github.com/batis/solidity-audit-assistant/security
+  license:
+    name: MIT
+    url: https://github.com/batis/solidity-audit-assistant/blob/main/LICENSE
+
+servers:
+  - url: http://localhost
+    description: Local Docker stack (via Nginx on port 80)
+  - url: https://your-domain.com
+    description: Self-hosted production instance
+
+tags:
+  - name: scan
+    description: Security scan operations
+  - name: api-keys
+    description: API key management (session required)
+  - name: internal
+    description: Internal endpoints (health, result lookup)
+
+# ─── Public REST API ────────────────────────────────────────────────────────────
+
+paths:
+  /v1/scan:
+    post:
+      tags: [scan]
+      summary: Submit a security scan
+      description: |
+        Submits a GitHub repository or verified EVM contract address for
+        security analysis. The request blocks until the scan completes (~10–60s).
+        Responses include a 0–100 risk score, severity-ranked findings, and
+        remediation recommendations.
+
+        Rate limit: 1 request per 30 seconds per API key.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanRequest'
+            examples:
+              github:
+                summary: Scan a GitHub repository
+                value:
+                  target: https://github.com/OpenZeppelin/openzeppelin-contracts
+                  targetType: github
+              address:
+                summary: Scan a deployed contract
+                value:
+                  target: '0xdAC17F958D2ee523a2206206994597C13D831ec7'
+                  targetType: address
+                  chain: ethereum
+      responses:
+        '200':
+          description: Scan completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+# ─── Scan result lookup ─────────────────────────────────────────────────────────
+
+  /api/scan/{scanId}:
+    get:
+      tags: [internal]
+      summary: Get scan result by ID
+      description: Retrieves a previously completed scan by its UUID.
+      parameters:
+        - name: scanId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the scan returned by POST /v1/scan
+      responses:
+        '200':
+          description: Scan found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResult'
+        '404':
+          description: Scan not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+# ─── API key management ─────────────────────────────────────────────────────────
+
+  /api/api-keys:
+    get:
+      tags: [api-keys]
+      summary: List API keys
+      description: Returns all API keys for the authenticated user. Requires a GitHub OAuth session.
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: List of API keys (no plaintext — prefix only)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKeyRecord'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [api-keys]
+      summary: Create API key
+      description: |
+        Generates a new API key for the authenticated user.
+        **The plaintext key is returned once — save it immediately.**
+        It cannot be recovered after this response.
+      security:
+        - SessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                  description: Optional human-readable label for the key
+                  example: CI pipeline
+      responses:
+        '201':
+          description: Key created — plaintext shown once
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [key, record]
+                properties:
+                  key:
+                    type: string
+                    description: Plaintext API key — save this, it will not be shown again
+                    example: ska_1a2b3c4d5e6f...
+                  record:
+                    $ref: '#/components/schemas/ApiKeyRecord'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      tags: [api-keys]
+      summary: Deactivate API key
+      description: Permanently deactivates an API key. Cannot be undone.
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: keyId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the API key to deactivate
+      responses:
+        '200':
+          description: Key deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: API key deactivated.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Key not found or not owned by the requesting user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+# ─── Health ─────────────────────────────────────────────────────────────────────
+
+  /api/health:
+    get:
+      tags: [internal]
+      summary: Health check
+      description: Returns 200 if the Express server is running.
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+# ─── Components ─────────────────────────────────────────────────────────────────
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: API key obtained from the Solidity Smart Audit web UI
+    SessionAuth:
+      type: http
+      scheme: bearer
+      description: GitHub OAuth session (managed by the web app — not for direct API use)
+
+  schemas:
+    ScanRequest:
+      type: object
+      required: [target, targetType]
+      properties:
+        target:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: GitHub repo URL or checksummed EVM contract address
+          examples:
+            - https://github.com/OpenZeppelin/openzeppelin-contracts
+            - '0xdAC17F958D2ee523a2206206994597C13D831ec7'
+        targetType:
+          type: string
+          enum: [github, address]
+          description: Whether target is a GitHub URL or a contract address
+        chain:
+          type: string
+          enum: [ethereum, polygon, arbitrum, optimism, base, bsc]
+          description: EVM chain for contract address scans (ignored for GitHub scans)
+          default: ethereum
+
+    ScanResult:
+      type: object
+      required: [scanId, target, riskScore, riskLabel, findings, summary, scannedAt, durationMs]
+      properties:
+        scanId:
+          type: string
+          format: uuid
+        target:
+          type: string
+        riskScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Composite risk score — 0 is safe, 100 is critical
+        riskLabel:
+          type: string
+          enum: [critical, high, medium, low, safe]
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/VulnerabilityFinding'
+        summary:
+          type: string
+          description: AI-generated executive summary of the findings
+        scannedAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: integer
+          description: Total scan duration in milliseconds
+
+    VulnerabilityFinding:
+      type: object
+      required: [id, severity, title, description, recommendation]
+      properties:
+        id:
+          type: string
+          format: uuid
+        severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        title:
+          type: string
+        description:
+          type: string
+        recommendation:
+          type: string
+        filename:
+          type: string
+          nullable: true
+        line:
+          type: integer
+          nullable: true
+        swcId:
+          type: string
+          nullable: true
+          description: SWC Registry ID (e.g. SWC-107 for reentrancy)
+
+    ApiKeyRecord:
+      type: object
+      required: [id, userId, keyPrefix, isActive, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        keyPrefix:
+          type: string
+          description: First 12 characters of the key (safe to display in UI)
+          example: ska_1a2b3c4d
+        name:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        RateLimit-Limit:
+          schema:
+            type: integer
+        RateLimit-Remaining:
+          schema:
+            type: integer
+        RateLimit-Reset:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Rate limit exceeded. Try again in 30 seconds.
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

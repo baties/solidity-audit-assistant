@@ -3,6 +3,7 @@
  * Exported as `app` so it can be imported by tests (Supertest) and server/index.ts.
  * Mount order matters: middleware → routes → 404 → global error handler.
  */
+import path from 'path';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -56,6 +57,11 @@ const scanLimiter = rateLimit({
 
 // Routes
 app.get('/api/health', healthHandler);
+
+// Serve OpenAPI spec — path is relative to the project root regardless of cwd
+app.get('/api/docs', (_req: Request, res: Response) => {
+  res.sendFile(path.resolve(__dirname, '../../docs/api/openapi.yaml'));
+});
 app.post('/api/scan', scanLimiter, scanHandler);
 app.get('/api/scan/:scanId', scanResultHandler);
 app.get('/api/scan-history/:userId', scanHistoryHandler);
