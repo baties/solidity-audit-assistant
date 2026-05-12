@@ -10,6 +10,8 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // standalone bundles all dependencies into .next/standalone for Docker deployment
+  output: 'standalone',
   async rewrites() {
     // Only proxy to local Express in development.
     // In production, Nginx routes /api/* → Express directly (except auth paths handled by Nginx below).
