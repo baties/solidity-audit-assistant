@@ -44,6 +44,8 @@ COPY --from=builder /app/server ./server
 COPY --from=builder /app/types  ./types
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/tsconfig.server.json ./tsconfig.server.json
+# docs/ contains the OpenAPI spec served at GET /api/docs
+COPY --from=builder /app/docs ./docs
 
 RUN chown -R nextjs:nodejs /app
 
