@@ -114,6 +114,28 @@ Full scan pipeline, end-to-end.
 
 ---
 
+## Post-Phase 4 CI/CD Fixes
+
+Three issues surfaced after the first CI push and were fixed in follow-up commits:
+
+**Fix 1 — ESLint config missing** (`32d1b44`)
+- `.eslintrc.json` was never created in Phase 0; `pnpm lint` failed for the first time in CI
+- Created `.eslintrc.json` extending `next/core-web-vitals` + `@typescript-eslint/recommended`
+- Removed stale unused `beforeEach` import from `scan-validation.test.ts`
+
+**Fix 2 — pnpm version drift** (`d6dd52c`)
+- Dockerfile used `pnpm@latest` → resolved to pnpm 11, which requires Node ≥22 and pulls in `node:sqlite` (unavailable on Node 20)
+- CI used `version: 8` but lockfile is format 9.0 — pnpm 8 silently ignores incompatible lockfile then fails `--frozen-lockfile`
+- Fixed: Dockerfile changed to `pnpm@9`; CI workflow changed to `version: 9`; `packageManager: pnpm@9.15.9` added to `package.json` as a version guard
+
+**Fix 3 — Public repo out of sync** (`b2371f4`, `2732890`)
+- `.github/`, `.eslintrc.json`, `docs/`, `public/` were absent from `public-files.txt`; gitpsh never pushed them to the public repo
+- Public repo's CI was running old `ci.yml` (pnpm 8) and had no `.eslintrc.json` or `next.config.mjs` `output: 'standalone'`
+- Added all four entries to `public-files.txt`; added `COPY --from=builder /app/docs ./docs` to Dockerfile runner stage
+- Added `output: 'standalone'` to `next.config.mjs`; created `public/.gitkeep` so Docker `COPY public` doesn't error on an empty directory
+
+---
+
 ## Architecture Decisions
 
 | Decision | ADR |
@@ -130,4 +152,4 @@ Full scan pipeline, end-to-end.
 
 ---
 
-*Last updated: 2026-05-11 — Phase 4 complete. Rate limiting, public REST API, API key auth, OpenAPI spec, CI pipeline, GHCR Docker image. 45 tests passing, tsc clean. All phases complete.*
+*Last updated: 2026-05-12 — All phases complete. Post-phase CI/CD fixes applied: ESLint config, pnpm 9 pinning, public repo sync, standalone Docker output. 45 tests passing, tsc clean.*

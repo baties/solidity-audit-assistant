@@ -21,11 +21,11 @@ Please read this guide before opening a PR.
 
 ## Repo Setup
 
-**Prerequisites**: Node.js 20+, pnpm 8+, Docker
+**Prerequisites**: Node.js 20+ (22.x also works), pnpm 9+ (`npm install -g pnpm@9`), Docker 24+
 
 ```bash
 # Clone the repo
-git clone https://github.com/batis/solidity-audit-assistant.git
+git clone https://github.com/baties/solidity-audit-assistant.git
 cd solidity-audit-assistant
 
 # Install dependencies
@@ -126,12 +126,19 @@ Respect these boundaries — do not make LLM or external API calls from `app/` o
 ## Running Tests
 
 ```bash
-pnpm test                  # run all tests (Vitest)
-pnpm test:watch            # watch mode
-pnpm test server/          # run only server-side tests
+pnpm test                                        # run all 45 tests (Vitest)
+pnpm test:watch                                  # watch mode — re-runs on save
+pnpm test server/__tests__/api-keys.test.ts      # run a specific file
 ```
 
-Tests that hit the database require a running PostgreSQL instance with a valid `DATABASE_URL` in your `.env`. Do not mock the database in integration tests — this has caused past incidents where mock and real behaviour diverged silently.
+**No running database or Anthropic API key required.** All external calls (PostgreSQL, Claude, Etherscan, GitHub) are mocked in the test suite. Tests run completely offline.
+
+| Suite | Tests | What it covers |
+|-------|-------|----------------|
+| `health.test.ts` | 2 | GET /api/health, 404 handler |
+| `scan-validation.test.ts` | 8 | Zod input validation on POST /api/scan |
+| `analyzer.test.ts` | 22 | All 14 static SWC + gas checks |
+| `api-keys.test.ts` | 13 | API key CRUD, /v1/scan auth, /api/docs |
 
 ---
 
@@ -149,7 +156,7 @@ Tests that hit the database require a running PostgreSQL instance with a valid `
 Schema changes follow a strict migration-based flow:
 
 1. **Never edit** existing files in `server/db/migrations/`
-2. Create a new numbered file: `server/db/migrations/003_description.sql`
+2. Create a new numbered file: `server/db/migrations/004_description.sql` (current latest: `003_api_keys.sql`)
 3. Update `server/db/schema.sql` to reflect the new canonical state
 4. Include the migration SQL in your PR description so reviewers can see the exact change
 
@@ -159,12 +166,12 @@ Schema changes follow a strict migration-based flow:
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Please email **security@your-org.com** with:
-- A description of the vulnerability
-- Steps to reproduce
-- Potential impact
+Use GitHub's private advisory system:
+1. Go to the repository's **Security** tab
+2. Click **"Report a vulnerability"**
+3. Fill in: description, steps to reproduce, and potential impact
 
-You will receive a response within 48 hours. We follow responsible disclosure and will coordinate a fix before any public disclosure.
+We follow responsible disclosure and will coordinate a fix before any public announcement. See [SECURITY.md](SECURITY.md) for the full policy.
 
 ---
 
