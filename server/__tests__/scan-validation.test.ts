@@ -3,7 +3,7 @@
  * The DB queries module is mocked so no Postgres connection is required.
  * These tests only verify that the Zod schema accepts/rejects inputs correctly.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 
 // Mock DB queries before importing the app so the pool is never created
