@@ -10,8 +10,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.app
     ports:
-      - "3000:3000"
-      - "3001:3001"
+      - "${APP_HOST_PORT_NEXT:-3000}:3000"
+      - "${APP_HOST_PORT_EXPRESS:-3001}:3001"
     environment:
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
@@ -44,7 +44,7 @@ services:
       # Auto-apply schema on first boot (idempotent — uses IF NOT EXISTS)
       - ../server/db/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-solidityaudit} -d ${POSTGRES_DB:-solidityaudit}"]
       interval: 10s
@@ -57,7 +57,7 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
+      - "${NGINX_HOST_PORT:-80}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
